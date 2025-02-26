@@ -1,4 +1,7 @@
-# Note that the dataset is not included in the github due to size
+# Note that the dataset is not included in the github due to size.
+
+# Also note that two neural networks may be required if we want the model
+# to play as black and white
 
 import torch
 import torch.nn as nn
