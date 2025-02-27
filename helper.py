@@ -21,21 +21,25 @@ fen_map = {
 #
 # Each matrix of the tensor will represent the positions of the pieces,
 # for 6 unique chess pieces. 1 represents a white piece, and -1 for black.
-# The function will also output whose turn it is, true for white and false for black.
-def fen2vec(fen):
+# The function will return None if the given side does not match the data.
+def fen2vec(fen, isWhite):
     tens = torch.zeros((8, 8, 6), dtype=torch.int32)
     strs = fen.split(" ")
     rows = strs[0].split("/")
     side = True if strs[1] == "w" else False
 
+    if side != isWhite:
+        return None
+
     for row in range(8):
         currInd = 0
+        stringInd = 0
 
         while currInd < 8:
-            currChar = rows[row][currInd]
+            currChar = rows[row][stringInd]
             currAsc = ord(currChar)
 
-            if currAsc > 48 & currAsc < 57:  # from 1-8
+            if currAsc > 48 and currAsc < 57:  # from 1-8
                 currInd += currAsc - 48
             else:
                 currPiece = fen_map[currChar]
@@ -43,7 +47,9 @@ def fen2vec(fen):
                 tens[row][currInd][currPiece % 6] = setVal
                 currInd += 1
 
-    return tens, side
+            stringInd += 1
+
+    return tens
 
 
 # function takes in input centipawn string and converts it into a usable integer.
@@ -52,10 +58,13 @@ def fen2vec(fen):
 def cp2val(cp):
     op = cp[0]
     if op == "+":
-        return int(cp[1, :])
+        return int(cp[1:])
 
     if op == "-":
-        return int(cp[1, :])
+        return int(cp[1:])
+
+    if op == "0":
+        return 0
 
     else:
         if cp[1] == "+":

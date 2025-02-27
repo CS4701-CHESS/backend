@@ -1,18 +1,16 @@
-# Note that the dataset is not included in the github due to size.
-
-# Also note that two neural networks may be required if we want the model
-# to play as black and white
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data.dataset
 import nn as defs
 
-x = torch.randn(100, 10)
-y = torch.randn(100, 1)
+# Note that the dataset is not included in the github due to size.
+# Also note that two neural networks may be required if we want the model
+# to play as black and white
 
-dataset = defs.Dataset(x, y)
+dataset = defs.Dataset("data/chessData.csv", isWhite=True, read=100)
+print("Successfully Loaded Dataset!\n")
+
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=10, shuffle=True)
 
 model = defs.Model()
