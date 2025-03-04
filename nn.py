@@ -9,15 +9,23 @@ from tqdm import tqdm
 
 
 class Model(nn.Module):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, hidden_size):
+        super(Model, self).__init__()
 
-        self.layer1 = nn.Linear(10, 10)
-        self.layer2 = nn.Linear(10, 10)
+        self.conv1 = nn.Conv2d(hidden_size, hidden_size, 3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(hidden_size, hidden_size, 3, stride=1, padding=1)
+        self.bn1 = nn.BatchNorm2d(hidden_size)
+        self.bn2 = nn.BatchNorm2d(hidden_size)
 
     def forward(self, x):
-        x = F.relu(self.layer1(x))
-        x = self.layer2(x)
+        x_input = torch.clone(x)
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = F.selu(x)
+        x = self.conv2(x)
+        x = self.bn2(x)
+        x = x + x_input
+        x = F.selu(x)
         return x
 
 

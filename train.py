@@ -10,6 +10,8 @@ import nn as defs
 
 dataset = defs.Dataset("data/chessData.csv", isWhite=True, read=100)
 print("Successfully Loaded Dataset!\n")
+print(dataset.x[0])
+# print(dataset.y[0])
 
 dataloader = torch.utils.data.DataLoader(dataset, batch_size=10, shuffle=True)
 

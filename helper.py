@@ -1,4 +1,5 @@
 import torch
+import chess
 
 # uppercase is white, lowercase is black
 fen_map = {
@@ -17,13 +18,14 @@ fen_map = {
 }
 
 
-# function takes in an input fen and outputs an 8x8x6 tensor, and whose move it is.
+# function takes in an input fen and outputs an 14x8x8 tensor
 #
-# Each matrix of the tensor will represent the positions of the pieces,
-# for 6 unique chess pieces. 1 represents a white piece, and -1 for black.
+# The first 12 matricies of the tensor will represent the positions of the pieces,
+# converted to an index by the dictionary (white, then black). The final two matricies
+# represent the attacked squares from both sides.
 # The function will return None if the given side does not match the data.
 def fen2vec(fen, isWhite):
-    tens = torch.zeros((8, 8, 6), dtype=torch.int32)
+    tens = torch.zeros((14, 8, 8), dtype=torch.int32)
     strs = fen.split(" ")
     rows = strs[0].split("/")
     side = True if strs[1] == "w" else False
@@ -43,11 +45,25 @@ def fen2vec(fen, isWhite):
                 currInd += currAsc - 48
             else:
                 currPiece = fen_map[currChar]
-                setVal = 1 if currPiece < 6 else -1
-                tens[row][currInd][currPiece % 6] = setVal
+                tens[currPiece][row][currInd] = 1
                 currInd += 1
 
             stringInd += 1
+
+    # computing attacked squares
+    board = chess.Board(fen)
+    whiteAttacked = chess.SquareSet()
+    blackAttacked = chess.SquareSet()
+
+    for attacker in chess.SquareSet(board.occupied_co[chess.WHITE]):
+        whiteAttacked |= board.attacks(attacker)
+    for attacker in chess.SquareSet(board.occupied_co[chess.BLACK]):
+        blackAttacked |= board.attacks(attacker)
+
+    for square in whiteAttacked:
+        tens[12][(63 - square) // 8][7 - ((63 - square) % 8)] = 1
+    for square in blackAttacked:
+        tens[13][(63 - square) // 8][7 - ((63 - square) % 8)] = 1
 
     return tens
 
@@ -61,7 +77,7 @@ def cp2val(cp):
         return int(cp[1:])
 
     if op == "-":
-        return int(cp[1:])
+        return -(int(cp[1:]))
 
     if op == "0":
         return 0
