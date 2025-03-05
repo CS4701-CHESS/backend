@@ -25,7 +25,7 @@ fen_map = {
 # represent the attacked squares from both sides.
 # The function will return None if the given side does not match the data.
 def fen2vec(fen, isWhite):
-    tens = torch.zeros((14, 8, 8), dtype=torch.int32)
+    tens = torch.zeros((14, 8, 8), dtype=torch.float32)
     strs = fen.split(" ")
     rows = strs[0].split("/")
     side = True if strs[1] == "w" else False

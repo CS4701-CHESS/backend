@@ -3,46 +3,97 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data.dataset
 import nn as defs
+from tqdm import tqdm
+from matplotlib import pyplot as plt
 
 # Note that the dataset is not included in the github due to size.
 # Also note that two neural networks may be required if we want the model
 # to play as black and white
 
-dataset = defs.Dataset("data/chessData.csv", isWhite=True, read=100)
-print("Successfully Loaded Dataset!\n")
-print(dataset.x[0])
+# dataset gets killed by kernel for a million reads, might need to move to colab
+dataset = defs.Dataset("data/chessData.csv", isWhite=True, read=500000)
+train_dataset, test_dataset = torch.utils.data.random_split(dataset, [0.8, 0.2])
+print("Successfully Loaded Datasets!\n")
+# print(dataset.x[0])
 # print(dataset.y[0])
 
-dataloader = torch.utils.data.DataLoader(dataset, batch_size=10, shuffle=True)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=2048, shuffle=True)
+test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=2048, shuffle=True)
 
-model = defs.Model()
+LAWChess = defs.Model(32, 4)
 # add to nvidia GPU, might not work on macs
-model = model.to("cuda")
+LAWChess = LAWChess.to("cuda")
 
 # define loss
 criterion = nn.MSELoss()
 
 # define an optimizer
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+optimizer = torch.optim.Adam(LAWChess.parameters(), lr=0.001)
+scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+    optimizer,
+    mode="min",
+    factor=0.1,
+    patience=10,
+    threshold=0.0001,
+    threshold_mode="abs",
+)
+num_epochs = 1000
+
+
+train_losses = []
+train_lossAvg = 0
+train_numBatch = len(train_loader)
+test_losses = []
+test_lossAvg = 0
+test_numBatch = len(test_loader)
 
 # train the model
-for epoch in range(100):
-    for batch in dataset:
-        x, y = batch
-        x = x.to("cuda")
-        y = y.to("cuda")
+print("Training:")
+with tqdm(total=num_epochs) as progress_bar:
+    for epoch in range(num_epochs):
 
-        optimizer.zero_grad()
-        pred = model(x)
-        loss = criterion(pred, y)
-        loss.backward()
+        train_lossAvg = 0
+        test_lossAvg = 0
+        progress_bar.update(1)
 
-        # print loss
-        print(f"Epoch {epoch}, Loss: {loss.item()}")
+        # train
+        LAWChess.train()
+        for x, y in train_loader:
+            x = x.to("cuda")
+            y = y.to("cuda")
 
-        # update parameters with gd
-        optimizer.step()
+            optimizer.zero_grad()
+            pred = LAWChess(x)
+            loss = criterion(pred, y)
+            loss.backward()
 
+            train_lossAvg += loss.item()
+
+            # update parameters with gd
+            optimizer.step()
+
+        # validate
+        LAWChess.eval()
+        with torch.no_grad():
+            for x, y in test_loader:
+                x = x.to("cuda")
+                y = y.to("cuda")
+
+                pred = LAWChess(x)
+                loss = criterion(pred, y)
+
+                test_lossAvg += loss.item()
+
+        scheduler.step(train_lossAvg / train_numBatch)
+        train_losses.append(train_lossAvg / train_numBatch)
+        test_losses.append(test_lossAvg / test_numBatch)
 
 # save model
-torch.save(model.state_dict(), "model.pth")
+torch.save(LAWChess.state_dict(), "model.pth")
+
+# visualize data
+plt.plot(train_losses, label="train")
+plt.plot(test_losses, label="test")
+plt.xlabel("Epoch")
+plt.ylabel("Loss")
+plt.show()
