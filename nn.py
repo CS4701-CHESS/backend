@@ -42,12 +42,11 @@ class Model(nn.Module):
             x = self.bns[2 * i](x)
             x = F.relu(x)
             x = self.convs[2 * i + 1](x)
-            x = self.bns[2 * i](x)
+            x = self.bns[2 * i + 1](x)
             x += previous
             x = F.relu(x)
 
         x = self.flatten(x)
-        x = F.relu(x)
         x = self.lin1(x)
         x = F.relu(x)
         x = self.lin2(x)
@@ -57,7 +56,7 @@ class Model(nn.Module):
 
 class Dataset(torch.utils.data.Dataset):
     # color is either white or black, the only type of positions that this dataset will hold
-    def __init__(self, csv_file, isWhite, read=100000):
+    def __init__(self, csv_file, isWhite, fish_depth, read=100000):
 
         # read only a subset of the data
         raws = pd.read_csv(csv_file, nrows=read)
@@ -72,13 +71,13 @@ class Dataset(torch.utils.data.Dataset):
             for row in rows:
                 progress_bar.update(1)
 
-                tempX = helper.fen2vec(row[0], isWhite)
-                tempY = helper.cp2val(row[1])
-                if tempX is None or tempY == 0:  # remove draws and incorrect sides
+                datapoint = helper.fen2pair(row[0], isWhite, depth=fish_depth)
+
+                if datapoint[0] is None:  # remove incorrect sides
                     continue
 
-                x.append(tempX)
-                y.append(tempY)
+                x.append(datapoint[0])
+                y.append(datapoint[1])
 
         self.x = torch.stack(x)
         self.y = (torch.Tensor(y)).unsqueeze(1)

@@ -11,7 +11,8 @@ model.eval()
 pred = model(
     (
         helper.fen2vec(
-            "r3b2k/p5p1/4pq2/1p1p4/2n2P2/P2B4/1P2Q2P/1K1R2R1 w - - 4 26", isWhite=True
+            "2r4r/p4pk1/1p2p1p1/4Nn1q/3P2R1/P1P2Q2/5PP1/3R2K1 w - - 7 27",
+            isWhite=True,
         )
     ).unsqueeze(0)
 )

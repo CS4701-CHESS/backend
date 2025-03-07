@@ -11,7 +11,10 @@ from matplotlib import pyplot as plt
 # to play as black and white
 
 # dataset gets killed by kernel for a million reads, might need to move to colab
-dataset = defs.Dataset("data/chessData.csv", isWhite=True, read=500000)
+dataset = defs.Dataset("data/chessData.csv", isWhite=True, fish_depth=1, read=500000)
+torch.save(dataset.x, "processed_fens.pt")
+torch.save(dataset.y, "processed_vals.pt")
+
 train_dataset, test_dataset = torch.utils.data.random_split(dataset, [0.8, 0.2])
 print("Successfully Loaded Datasets!\n")
 # print(dataset.x[0])
@@ -92,8 +95,11 @@ with tqdm(total=num_epochs) as progress_bar:
 torch.save(LAWChess.state_dict(), "model.pth")
 
 # visualize data
+# print(f"Train Loss: {train_losses}")
+# print(f"Test Loss: {test_losses}")
 plt.plot(train_losses, label="train")
 plt.plot(test_losses, label="test")
 plt.xlabel("Epoch")
 plt.ylabel("Loss")
+plt.yscale("log")
 plt.show()

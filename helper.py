@@ -1,5 +1,11 @@
 import torch
 import chess
+from stockfish import Stockfish
+
+# load stockfish model
+stockfish = Stockfish(
+    path="stockfish-windows-x86-64-avx2/stockfish/stockfish-windows-x86-64-avx2.exe"
+)
 
 # uppercase is white, lowercase is black
 fen_map = {
@@ -87,3 +93,14 @@ def cp2val(cp):
             return 9999
         else:
             return -9999
+
+
+# create custom dataset from fen strings using stockfish at different depths
+def fen2pair(fen, isWhite, depth):
+    stockfish.set_depth(depth)
+    stockfish.set_fen_position(fen)
+    eval = stockfish.get_evaluation()
+    if eval["type"] == "cp":
+        return fen2vec(fen, isWhite), eval["value"]
+    else:
+        return fen2vec(fen, isWhite), eval["value"] * 1000
