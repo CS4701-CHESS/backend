@@ -42,8 +42,32 @@ def health_check():
     return jsonify({"status": "healthy"})
 
 
+@app.route("/api/test", methods=["POST"])
+def test_endpoint():
+    data = request.get_json()
+
+    if not data:
+        raise APIError("Request body is required")
+
+    # Extract the message from the request body
+    if "message" in data:
+        received_message = data["message"]
+    else:
+        # If no specific message field, use the first string value found
+        received_message = next(
+            (v for v in data.values() if isinstance(v, str)), "No string found"
+        )
+
+    # Return the message with greeting
+    return jsonify(
+        {
+            "status": "success",
+            "received": received_message,
+            "response": f"Hello from the backend! You sent: {received_message}",
+        }
+    )
+
+
 if __name__ == "__main__":
-
-    port = int(os.environ.get("PORT", 8080))
-
+    port = int(os.environ.get("PORT", 8000))
     app.run(host="0.0.0.0", port=port, debug=True)
