@@ -47,7 +47,7 @@ def test_endpoint():
 
 
 # takes a fen string and returns the recommended move in san notation. Expects
-# a json object with a "fen" key, and will return a json object with a "san" key.
+# a json object with a "fen" key, and will return a json object with a "move" key and eval key.
 @app.route("/api/move", methods=["POST"])
 def fen_to_san():
     data = request.get_json()
@@ -58,19 +58,15 @@ def fen_to_san():
     # Extract the message from the request body
     if "fen" in data:
         fen = data["message"]
-        san = minimax.minimax_from_fen(fen, depth=2, isWhite=True, alphabeta=True)
+        move, eval = minimax.minimax_from_fen(
+            fen, depth=2, isWhite=True, alphabeta=True
+        )
     else:
         # if no fen is given, raise error
         raise APIError("Fen string is required")
 
     # Return the message with greeting
-    return jsonify(
-        {
-            "status": "success",
-            "received": fen,
-            "response": san,
-        }
-    )
+    return jsonify({"status": "success", "received": fen, "move": move, "eval": eval})
 
 
 if __name__ == "__main__":
