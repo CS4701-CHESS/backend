@@ -4,3 +4,4 @@ data/chessData.csv
 stockfish-windows-x86-64-avx2
 processed_fens.pt
 processed_vals.pt
+denv
