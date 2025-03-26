@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
+import minimax
 
 app = Flask(__name__)
 CORS(app)
@@ -17,29 +18,6 @@ def handle_api_error(error):
     response = jsonify({"error": error.message})
     response.status_code = error.status_code
     return response
-
-
-@app.route("/", methods=["GET"])
-def root():
-    return "Hello World! Welcome to the Flask Backend"
-
-
-@app.route("/api/hello", methods=["GET", "POST"])
-def hello():
-    if request.method == "GET":
-        return jsonify({"message": "Hello, World!"})
-
-    elif request.method == "POST":
-        data = request.get_json()
-        if not data or "name" not in data:
-            raise APIError("Name is required in the request body")
-
-        return jsonify({"message": f"Hello, {data['name']}!"})
-
-
-@app.route("/api/health", methods=["GET"])
-def health_check():
-    return jsonify({"status": "healthy"})
 
 
 @app.route("/api/test", methods=["POST"])
@@ -64,6 +42,33 @@ def test_endpoint():
             "status": "success",
             "received": received_message,
             "response": f"Hello from the backend! You sent: {received_message}",
+        }
+    )
+
+
+# takes a fen string and returns the recommended move in san notation. Expects
+# a json object with a "fen" key, and will return a json object with a "san" key.
+@app.route("/api/move", methods=["POST"])
+def fen_to_san():
+    data = request.get_json()
+
+    if not data:
+        raise APIError("Request body is required")
+
+    # Extract the message from the request body
+    if "fen" in data:
+        fen = data["message"]
+        san = minimax.base_minimax(fen, 1, True)
+    else:
+        # if no fen is given, raise error
+        raise APIError("Fen string is required")
+
+    # Return the message with greeting
+    return jsonify(
+        {
+            "status": "success",
+            "received": fen,
+            "response": san,
         }
     )
 
