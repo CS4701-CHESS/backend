@@ -58,7 +58,7 @@ def fen_to_san():
     # Extract the message from the request body
     if "fen" in data:
         fen = data["message"]
-        san = minimax.base_minimax(fen, 1, True)
+        san = minimax.minimax_from_fen(fen, depth=2, isWhite=True, alphabeta=True)
     else:
         # if no fen is given, raise error
         raise APIError("Fen string is required")

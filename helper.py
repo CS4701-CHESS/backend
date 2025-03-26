@@ -1,10 +1,13 @@
 import torch
 import chess
 from stockfish import Stockfish
+import os
 
 # load stockfish model
 stockfish = Stockfish(
-    path="./stockfish-windows-x86-64-avx2/stockfish/stockfish-windows-x86-64-avx2.exe"
+    path=os.path.abspath(
+        "stockfish-windows-x86-64-avx2/stockfish/stockfish-windows-x86-64-avx2.exe"
+    )
 )
 
 # uppercase is white, lowercase is black
