@@ -4,8 +4,8 @@ import helper
 import chess
 
 # load in trained model
-model = defs.Model(32, 2)
-model.load_state_dict(torch.load("model.pth"))
+model = defs.Model(32, 4)
+model.load_state_dict(torch.load("model.pth", map_location=torch.device("cpu")))
 model.eval()
 
 
@@ -86,9 +86,9 @@ def minimax_from_fen(fen_str, depth=1, isWhite=True, alphabeta=False):
         return base_minimax(board, depth, isWhite=isWhite)
 
 
-# Example usage:
-fen = "rnbqkbnr/pppp1ppp/8/8/8/4Pp2/PPPP1KPP/RNBQ1BNR w KQkq - 0 1"
-move, evaluation = minimax_from_fen(fen, depth=4, isWhite=True, alphabeta=True)
+# # Example usage:
+# fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+# move, evaluation = minimax_from_fen(fen, depth=2, isWhite=True, alphabeta=True)
 
-print("Best Move:", move)
-print("Evaluation:", evaluation)
+# print("Best Move:", move)
+# print("Evaluation:", evaluation)
