@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 import os
-import minimax
+import eval as model
 
 app = Flask(__name__)
 CORS(app)
@@ -58,9 +58,8 @@ def fen_to_san():
     # Extract the message from the request body
     if "fen" in data:
         fen = data["message"]
-        move, eval = minimax.minimax_from_fen(
-            fen, depth=2, isWhite=True, alphabeta=True
-        )
+        move = model.predict_move_fen(fen)
+        eval = None
     else:
         # if no fen is given, raise error
         raise APIError("Fen string is required")

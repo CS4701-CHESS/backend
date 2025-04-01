@@ -1,6 +1,3 @@
-data/random_evals.csv
-data/tactic_evals.csv
-data/chessData.csv
+data
+processed_data
 stockfish-windows-x86-64-avx2
-processed_fens.pt
-processed_vals.pt

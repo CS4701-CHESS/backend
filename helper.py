@@ -2,6 +2,14 @@ import torch
 import chess
 from stockfish import Stockfish
 import os
+import numpy as np
+
+# load stockfish model
+stockfish = Stockfish(
+    path=os.path.abspath(
+        "stockfish-windows-x86-64-avx2/stockfish/stockfish-windows-x86-64-avx2.exe"
+    )
+)
 
 # uppercase is white, lowercase is black
 fen_map = {
@@ -70,40 +78,37 @@ def fen2vec(fen, isWhite):
     return tens
 
 
-# function takes in input centipawn string and converts it into a usable integer.
-#
-# #'s are converted into +9999 or -9999
-def cp2val(cp):
-    op = cp[0]
-    if op == "+":
-        return int(cp[1:])
-
-    if op == "-":
-        return -(int(cp[1:]))
-
-    if op == "0":
-        return 0
-
-    else:
-        if cp[1] == "+":
-            return 9999
-        else:
-            return -9999
-
-
 # create custom dataset from fen strings using stockfish at different depths
 def fen2pair(fen, isWhite, depth):
-    # load stockfish model
-    stockfish = Stockfish(
-        path=os.path.abspath(
-            "stockfish-windows-x86-64-avx2/stockfish/stockfish-windows-x86-64-avx2.exe"
-        )
-    )
-
     stockfish.set_depth(depth)
     stockfish.set_fen_position(fen)
-    eval = stockfish.get_evaluation()
-    if eval["type"] == "cp":
-        return fen2vec(fen, isWhite), eval["value"]
-    else:
-        return fen2vec(fen, isWhite), eval["value"] * 1000
+    move = stockfish.get_best_move()
+    return (fen2vec(fen, isWhite), move)
+
+
+# encode uci moves from string into int
+def encode_moves(moves):
+    move_to_int = {move: idx for idx, move in enumerate(set(moves))}
+    return (
+        np.array([move_to_int[move] for move in moves], dtype=np.float32),
+        move_to_int,
+    )
+
+
+# early stopping to training to prevent overfitting
+class EarlyStopper:
+    def __init__(self, patience=1, min_delta=0):
+        self.patience = patience
+        self.min_delta = min_delta
+        self.counter = 0
+        self.min_validation_loss = float("inf")
+
+    def early_stop(self, validation_loss):
+        if validation_loss < self.min_validation_loss:
+            self.min_validation_loss = validation_loss
+            self.counter = 0
+        elif validation_loss > (self.min_validation_loss + self.min_delta):
+            self.counter += 1
+            if self.counter >= self.patience:
+                return True
+        return False
