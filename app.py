@@ -56,6 +56,8 @@ def test_endpoint():
 
 # takes a fen string and returns the recommended move in san notation. Expects
 # a json object with a "fen" key, and will return a json object with a "move" key and eval key.
+
+
 @app.route("/api/move", methods=["POST"])
 def fen_to_san():
     data = request.get_json()
@@ -67,20 +69,22 @@ def fen_to_san():
 
     # Extract the FEN from the request body
     if "fen" in data:
-
         fen = data["fen"]
 
         # Get optional parameters with defaults
         depth = int(data.get("depth", 2))
-        is_white = bool(data.get("isWhite", True))
+
+        # We can ignore isWhite from the request since our fixed fen2vec works for both sides
+        # But for logging purposes, let's determine the actual side from the FEN
+        is_white_from_fen = fen.split(" ")[1] == "w"
 
         logger.debug(
-            f"Processing move for FEN: {fen}, depth: {depth}, isWhite: {is_white}"
+            f"Processing move for FEN: {fen}, depth: {depth}, actual side: {'white' if is_white_from_fen else 'black'}"
         )
 
         try:
-            move = model.predict_move_fen(fen)
-            eval_score = None
+            # Now we receive both move and evaluation
+            move, eval_score = model.predict_move_fen(fen)
 
             logger.debug(f"AI returned move: {move}, eval: {eval_score}")
 

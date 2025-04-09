@@ -6,9 +6,10 @@ import numpy as np
 
 # load stockfish model
 stockfish = Stockfish(
-    path=os.path.abspath(
-        "stockfish-windows-x86-64-avx2/stockfish/stockfish-windows-x86-64-avx2.exe"
-    )
+    path=os.path.abspath("stockfish/stockfish-macos-x86-64-bmi2")
+    # path=os.path.abspath(
+    #     "stockfish-windows-x86-64-avx2/stockfish/stockfish-windows-x86-64-avx2.exe"
+    # )
 )
 
 # uppercase is white, lowercase is black
@@ -33,15 +34,15 @@ fen_map = {
 # The first 12 matricies of the tensor will represent the positions of the pieces,
 # converted to an index by the dictionary (white, then black). The final two matricies
 # represent the attacked squares from both sides.
-# The function will return None if the given side does not match the data.
-def fen2vec(fen, isWhite):
+# The function will now work for both white and black sides.
+def fen2vec(fen, isWhite=None):  # isWhite parameter is now optional
     tens = torch.zeros((14, 8, 8), dtype=torch.float32)
     strs = fen.split(" ")
     rows = strs[0].split("/")
     side = True if strs[1] == "w" else False
 
-    if side != isWhite:
-        return None
+    # Removed the condition that returned None when side != isWhite
+    # This allows the function to work for both sides
 
     for row in range(8):
         currInd = 0
