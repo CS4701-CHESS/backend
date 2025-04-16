@@ -139,7 +139,7 @@ PIECE_VALUES = {
 
 # Piece-square tables (from White's perspective)
 PAWN_PST = [
-     0,  5,  5, -10, -10,  5,  5,  0,
+     0,  0,  0,  0, 0,  0,  0,  0,
      0, 10, -5,   0,   0, -5, 10,  0,
      0, 10, 10,  20,  20, 10, 10,  0,
      5, 20, 20,  30,  30, 20, 20,  5,
