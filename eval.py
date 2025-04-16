@@ -5,6 +5,7 @@ from nn import Model
 import pickle
 import numpy as np
 import logging
+import chess
 
 # Configure logging
 logging.basicConfig(
@@ -125,3 +126,113 @@ def predict_move_fen(fen):
     except Exception as e:
         logger.error(f"Error in predict_move_fen: {e}")
         return None, None
+
+# Material values
+PIECE_VALUES = {
+    chess.PAWN: 100,
+    chess.KNIGHT: 320,
+    chess.BISHOP: 330,
+    chess.ROOK: 500,
+    chess.QUEEN: 900,
+    chess.KING: 100000
+}
+
+# Piece-square tables (from White's perspective)
+PAWN_PST = [
+     0,  5,  5, -10, -10,  5,  5,  0,
+     0, 10, -5,   0,   0, -5, 10,  0,
+     0, 10, 10,  20,  20, 10, 10,  0,
+     5, 20, 20,  30,  30, 20, 20,  5,
+    10, 20, 20,  30,  30, 20, 20, 10,
+    50, 50, 50,  50,  50, 50, 50, 50,
+    80, 80, 80,  80,  80, 80, 80, 80,
+     0,  0,  0,   0,   0,  0,  0,  0
+]
+
+KNIGHT_PST = [
+    -50, -40, -30, -30, -30, -30, -40, -50,
+    -40, -20,   0,   0,   0,   0, -20, -40,
+    -30,   0,  10,  15,  15,  10,   0, -30,
+    -30,   5,  15,  20,  20,  15,   5, -30,
+    -30,   0,  15,  20,  20,  15,   0, -30,
+    -30,   5,  10,  15,  15,  10,   5, -30,
+    -40, -20,   0,   5,   5,   0, -20, -40,
+    -50, -40, -30, -30, -30, -30, -40, -50
+]
+
+BISHOP_PST = [
+    -20, -10, -10, -10, -10, -10, -10, -20,
+    -10,   0,   0,   0,   0,   0,   0, -10,
+    -10,   0,   5,  10,  10,   5,   0, -10,
+    -10,   5,   5,  10,  10,   5,   5, -10,
+    -10,   0,  10,  10,  10,  10,   0, -10,
+    -10,  10,  10,  10,  10,  10,  10, -10,
+    -10,   5,   0,   0,   0,   0,   5, -10,
+    -20, -10, -10, -10, -10, -10, -10, -20
+]
+
+ROOK_PST = [
+     0,   0,   5,  10,  10,   5,   0,   0,
+    -5,   0,   0,   0,   0,   0,   0,  -5,
+    -5,   0,   0,   0,   0,   0,   0,  -5,
+    -5,   0,   0,   0,   0,   0,   0,  -5,
+    -5,   0,   0,   0,   0,   0,   0,  -5,
+    -5,   0,   0,   0,   0,   0,   0,  -5,
+     5,  10,  10,  10,  10,  10,  10,   5,
+     0,   0,   0,   0,   0,   0,   0,   0
+]
+
+QUEEN_PST = [
+    -20, -10, -10,  -5,  -5, -10, -10, -20,
+    -10,   0,   0,   0,   0,   0,   0, -10,
+    -10,   0,   5,   5,   5,   5,   0, -10,
+     -5,   0,   5,   5,   5,   5,   0,  -5,
+      0,   0,   5,   5,   5,   5,   0,  -5,
+    -10,   5,   5,   5,   5,   5,   0, -10,
+    -10,   0,   5,   0,   0,   0,   0, -10,
+    -20, -10, -10,  -5,  -5, -10, -10, -20
+]
+KING_PST = [
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -30, -40, -40, -50, -50, -40, -40, -30,
+    -20, -30, -30, -40, -40, -30, -30, -20,
+    -10, -20, -20, -20, -20, -20, -20, -10,
+     20,  20,   0,   0,   0,   0,  20,  20,
+     20,  30,  10,   0,   0,  10,  30,  20
+]
+
+# Mapping piece type to PST
+PIECE_SQUARE_TABLES = {
+    chess.PAWN: PAWN_PST,
+    chess.KNIGHT: KNIGHT_PST,
+    chess.BISHOP: BISHOP_PST,
+    chess.ROOK: ROOK_PST,
+    chess.QUEEN: QUEEN_PST,
+    chess.KING: KING_PST
+}
+
+def evaluate_board(board: chess.Board) -> int:
+    """
+    Evaluates the board position using material and piece-square tables.
+    Positive = White advantage. Negative = Black advantage.
+    """
+    score = 0
+
+    for piece_type in PIECE_VALUES:
+        white_squares = board.pieces(piece_type, chess.WHITE)
+        black_squares = board.pieces(piece_type, chess.BLACK)
+
+        # Material
+        score += PIECE_VALUES[piece_type] * (len(white_squares) - len(black_squares))
+
+        # Positional (PST)
+        pst = PIECE_SQUARE_TABLES.get(piece_type)
+        if pst:
+            for square in white_squares:
+                score += pst[square]
+            for square in black_squares:
+                score -= pst[chess.square_mirror(square)]  # mirror for black
+
+    return score
