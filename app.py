@@ -54,10 +54,6 @@ def test_endpoint():
     )
 
 
-# takes a fen string and returns the recommended move in san notation. Expects
-# a json object with a "fen" key, and will return a json object with a "move" key and eval key.
-
-
 @app.route("/api/move", methods=["POST"])
 def fen_to_san():
     data = request.get_json()
@@ -73,18 +69,29 @@ def fen_to_san():
 
         # Get optional parameters with defaults
         depth = int(data.get("depth", 2))
+        top_n = int(data.get("top_n", 4))
+        use_neural_minimax = bool(data.get("use_neural_minimax", False))
+        first_move_all_legal = bool(data.get("first_move_all_legal", False))
 
         # We can ignore isWhite from the request since our fixed fen2vec works for both sides
         # But for logging purposes, let's determine the actual side from the FEN
         is_white_from_fen = fen.split(" ")[1] == "w"
 
         logger.debug(
-            f"Processing move for FEN: {fen}, depth: {depth}, actual side: {'white' if is_white_from_fen else 'black'}"
+            f"Processing move for FEN: {fen}, depth: {depth}, top_n: {top_n}, "
+            f"use_neural_minimax: {use_neural_minimax}, first_move_all_legal: {first_move_all_legal}, "
+            f"actual side: {'white' if is_white_from_fen else 'black'}"
         )
 
         try:
-            # Now we receive both move and evaluation
-            move, eval_score = model.predict_move_fen(fen)
+            # Now we use our hybrid approach with minimax
+            move, eval_score = model.predict_move_fen(
+                fen,
+                depth=depth,
+                top_n=top_n,
+                use_neural_minimax=use_neural_minimax,
+                first_move_all_legal=first_move_all_legal,
+            )
 
             logger.debug(f"AI returned move: {move}, eval: {eval_score}")
 
