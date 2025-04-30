@@ -14,13 +14,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-model_path = "models/validation_optimized_model.pth"
-mti_path = "models/vom_mti"
+white_model_path = "models/validation_optimized_model_white.pth"
+white_mti_path = "models/vom_mti_white"
+black_model_path = "models/validation_optimized_model_black.pth"
+black_mti_path = "models/vom_mti_black"
 
 
 def prepare_input(board: Board):
 
-    is_white = board.turn
+    is_white = board.turn == chess.WHITE
 
     matrix = helper.fen2vec(board.fen(), is_white)
 
@@ -34,15 +36,19 @@ def prepare_input(board: Board):
 
 
 try:
-    with open(mti_path, "rb") as file:
-        move_to_int = pickle.load(file)
+    with open(white_mti_path, "rb") as file:
+        move_to_int_white = pickle.load(file)
+    with open(black_mti_path, "rb") as file:
+        move_to_int_black = pickle.load(file)
 
-    model = Model(num_classes=len(move_to_int))
-    model.load_state_dict(torch.load(model_path, map_location=torch.device("cpu")))
+    model = Model(num_classes=len(move_to_int_white))
+    model.load_state_dict(
+        torch.load(white_model_path, map_location=torch.device("cpu"))
+    )
     model.to("cuda" if torch.cuda.is_available() else "cpu")
     model.eval()
 
-    int_to_move = {v: k for k, v in move_to_int.items()}
+    int_to_move = {v: k for k, v in move_to_int_white.items()}
 except Exception as e:
     logger.critical(f"Failed to initialize model: {e}")
     model = None

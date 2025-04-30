@@ -6,10 +6,10 @@ import numpy as np
 
 # load stockfish model
 stockfish = Stockfish(
-    path=os.path.abspath("stockfish/stockfish-macos-x86-64-bmi2")
-    # path=os.path.abspath(
-    #     "stockfish-windows-x86-64-avx2/stockfish/stockfish-windows-x86-64-avx2.exe"
-    # )
+    # path=os.path.abspath("stockfish/stockfish-macos-x86-64-bmi2")
+    path=os.path.abspath(
+        "stockfish-windows-x86-64-avx2/stockfish/stockfish-windows-x86-64-avx2.exe"
+    )
 )
 
 # uppercase is white, lowercase is black
