@@ -6,6 +6,7 @@ import pickle
 import numpy as np
 import logging
 import chess
+import random
 
 
 logging.basicConfig(
@@ -14,6 +15,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# Model paths
 white_model_path = "models/validation_optimized_model_white.pth"
 white_mti_path = "models/vom_mti_white"
 black_model_path = "models/validation_optimized_model_black.pth"
@@ -21,45 +23,67 @@ black_mti_path = "models/vom_mti_black"
 
 
 def prepare_input(board: Board):
-
+    """Prepare input tensor for the neural network based on current board state."""
     is_white = board.turn == chess.WHITE
 
     matrix = helper.fen2vec(board.fen(), is_white)
 
     if matrix is None:
         logger.error(f"fen2vec returned None for board: {board.fen()}")
-
         return torch.zeros((14, 8, 8), dtype=torch.float32).unsqueeze(0)
 
     X_tensor = matrix.unsqueeze(0)
     return X_tensor
 
 
+# Initialize models
 try:
+    # Load white model data
     with open(white_mti_path, "rb") as file:
         move_to_int_white = pickle.load(file)
+    int_to_move_white = {v: k for k, v in move_to_int_white.items()}
+
+    # Load black model data
     with open(black_mti_path, "rb") as file:
         move_to_int_black = pickle.load(file)
+    int_to_move_black = {v: k for k, v in move_to_int_black.items()}
 
-    model = Model(num_classes=len(move_to_int_white))
-    model.load_state_dict(
+    # Initialize white model
+    white_model = Model(num_classes=len(move_to_int_white))
+    white_model.load_state_dict(
         torch.load(white_model_path, map_location=torch.device("cpu"))
     )
-    model.to("cuda" if torch.cuda.is_available() else "cpu")
-    model.eval()
+    white_model.to("cuda" if torch.cuda.is_available() else "cpu")
+    white_model.eval()
 
-    int_to_move = {v: k for k, v in move_to_int_white.items()}
+    # Initialize black model
+    black_model = Model(num_classes=len(move_to_int_black))
+    black_model.load_state_dict(
+        torch.load(black_model_path, map_location=torch.device("cpu"))
+    )
+    black_model.to("cuda" if torch.cuda.is_available() else "cpu")
+    black_model.eval()
+
 except Exception as e:
-    logger.critical(f"Failed to initialize model: {e}")
-    model = None
-    move_to_int = {}
-    int_to_move = {}
+    logger.critical(f"Failed to initialize models: {e}")
+    white_model = None
+    black_model = None
+    move_to_int_white = {}
+    move_to_int_black = {}
+    int_to_move_white = {}
+    int_to_move_black = {}
 
 
 def predict_move(board: Board):
+    """Predict the best move using the appropriate model based on whose turn it is."""
     try:
+        is_white = board.turn == chess.WHITE
+        model = white_model if is_white else black_model
+        move_to_int = move_to_int_white if is_white else move_to_int_black
+        int_to_move = int_to_move_white if is_white else int_to_move_black
+
         if model is None:
-            logger.error("Model not initialized")
+            logger.error(f"{'White' if is_white else 'Black'} model not initialized")
             return None, None
 
         X_tensor = prepare_input(board).to(
@@ -70,7 +94,6 @@ def predict_move(board: Board):
             logits = model(X_tensor)
 
         logits = logits.squeeze(0)
-
         probabilities = torch.softmax(logits, dim=0).cpu().numpy()
         legal_moves = list(board.legal_moves)
         legal_moves_uci = [move.uci() for move in legal_moves]
@@ -114,6 +137,7 @@ def predict_move(board: Board):
             return None, None
 
 
+# Piece Square Tables
 PAWN_PST = [
     0,
     0,
@@ -448,6 +472,7 @@ QUEEN_PST = [
     -10,
     -20,
 ]
+
 KING_PST = [
     -30,
     -40,
@@ -541,7 +566,6 @@ def get_game_phase(board):
     Returns a value between 0 and 1 indicating game phase
     0 = opening, 1 = endgame
     """
-
     total_material = sum(
         len(board.pieces(piece, color)) * PIECE_VALUES[piece]
         for color in [chess.WHITE, chess.BLACK]
@@ -719,7 +743,6 @@ def evaluate_board(board: chess.Board) -> int:
         score -= int(king_center_penalty * 0.5)
 
     if phase > 0.5:
-
         white_king_center_distance = max(
             3 - white_king_file, white_king_file - 4
         ) + max(3 - white_king_rank, white_king_rank - 4)
@@ -769,7 +792,6 @@ def order_moves(board):
 
     for move in board.legal_moves:
         if board.is_capture(move):
-
             captures.append((move, mvv_lva_score(board, move)))
         elif board.gives_check(move):
             checks.append(move)
@@ -781,39 +803,179 @@ def order_moves(board):
     return [move for move, _ in captures] + checks + others
 
 
-def quiescence_search(board, alpha, beta, qdepth=0, max_qdepth=8):
+# Zobrist hashing implementation
+
+# Initialize the Zobrist tables
+random.seed(42)  # For reproducibility
+ZOBRIST_PIECE_SQUARE = {}
+ZOBRIST_CASTLING = {}
+ZOBRIST_EP = {}
+ZOBRIST_TURN = random.getrandbits(64)
+
+# Initialize piece-square table
+for piece in range(1, 7):  # 1=pawn, 2=knight, ..., 6=king
+    for color in [True, False]:  # True=White, False=Black
+        for square in range(64):
+            ZOBRIST_PIECE_SQUARE[(piece, color, square)] = random.getrandbits(64)
+
+# Initialize castling rights table
+for i in range(16):  # 4 bits, representing KQkq
+    ZOBRIST_CASTLING[i] = random.getrandbits(64)
+
+# Initialize en passant table
+for file in range(8):
+    ZOBRIST_EP[file] = random.getrandbits(64)
+
+
+def zobrist_hash(board):
     """
-    Search captures until reaching a "quiet" position to avoid horizon effect.
+    Calculate Zobrist hash for the current board position
+    """
+    h = 0
+
+    # Hash the pieces
+    for square in range(64):
+        piece = board.piece_at(chess.SQUARES[square])
+        if piece:
+            h ^= ZOBRIST_PIECE_SQUARE[(piece.piece_type, piece.color, square)]
+
+    # Hash the castling rights
+    castling = 0
+    if board.has_kingside_castling_rights(chess.WHITE):
+        castling |= 1
+    if board.has_queenside_castling_rights(chess.WHITE):
+        castling |= 2
+    if board.has_kingside_castling_rights(chess.BLACK):
+        castling |= 4
+    if board.has_queenside_castling_rights(chess.BLACK):
+        castling |= 8
+    h ^= ZOBRIST_CASTLING[castling]
+
+    # Hash the en passant square
+    if board.ep_square:
+        file = chess.square_file(board.ep_square)
+        h ^= ZOBRIST_EP[file]
+
+    # Hash the turn
+    if board.turn == chess.WHITE:
+        h ^= ZOBRIST_TURN
+
+    return h
+
+
+# Transposition Table implementation
+
+
+class TranspositionEntry:
+    """
+    Entry in the transposition table.
     """
 
+    # Flag types
+    EXACT = 0  # Exact score
+    LOWERBOUND = 1  # Beta cutoff, actual score might be higher
+    UPPERBOUND = 2  # Alpha cutoff, actual score might be lower
+
+    def __init__(self, hash_key, depth, score, flag, best_move=None):
+        self.hash_key = hash_key  # Hash key for the position
+        self.depth = depth  # Search depth
+        self.score = score  # Evaluation score
+        self.flag = flag  # Type of score (exact, lower bound, upper bound)
+        self.best_move = best_move  # Best move found for this position
+
+
+class TranspositionTable:
+    """
+    Transposition table for storing previously evaluated positions.
+    """
+
+    def __init__(self, size_mb=64):
+        # Calculate the number of entries based on the size in MB
+        # Each entry takes ~32 bytes
+        self.max_entries = (size_mb * 1024 * 1024) // 32
+        self.table = {}
+        self.hits = 0
+        self.collisions = 0
+        self.stores = 0
+
+    def store(self, hash_key, depth, score, flag, best_move=None):
+        """Store a position in the transposition table."""
+        # If we already have this position, update only if new entry has greater or equal depth
+        if hash_key in self.table and self.table[hash_key].depth > depth:
+            self.collisions += 1
+            return
+
+        entry = TranspositionEntry(hash_key, depth, score, flag, best_move)
+
+        # If the table is full, we could implement a replacement strategy
+        # For now, we'll just add the new entry
+        if len(self.table) >= self.max_entries:
+            # Simple replacement - remove a random entry
+            # In a more sophisticated implementation, we could use age or depth
+            if len(self.table) > 0:
+                self.table.pop(next(iter(self.table)))
+
+        self.table[hash_key] = entry
+        self.stores += 1
+
+    def lookup(self, hash_key):
+        """Look up a position in the transposition table."""
+        if hash_key in self.table:
+            self.hits += 1
+            return self.table[hash_key]
+        return None
+
+    def clear(self):
+        """Clear the transposition table."""
+        self.table.clear()
+        self.hits = 0
+        self.collisions = 0
+        self.stores = 0
+
+    def info(self):
+        """Return information about the transposition table usage."""
+        return {
+            "size": len(self.table),
+            "max_size": self.max_entries,
+            "hits": self.hits,
+            "stores": self.stores,
+            "collisions": self.collisions,
+        }
+
+
+# Initialize the transposition table
+tt = TranspositionTable(size_mb=64)  # Default size of 64 MB
+
+
+def quiescence_search(board, alpha, beta, depth=0, max_depth=5):
+    """
+    Quiescence search to evaluate captures until a quiet position is reached.
+    This helps mitigate the horizon effect.
+    """
+    # Stand-pat score (evaluation if we don't make any moves)
     stand_pat = evaluate_board(board)
 
-    if qdepth >= max_qdepth:
-        return stand_pat
-
-    if board.is_checkmate():
-        return -100000 if board.turn else 100000
-    if board.is_stalemate() or board.is_insufficient_material():
-        return 0
-
+    # If the score is so good that it can't affect the result, return early
     if stand_pat >= beta:
         return beta
+
+    # Update alpha if stand-pat is better
     if alpha < stand_pat:
         alpha = stand_pat
 
-    captures_and_checks = []
-    for move in board.legal_moves:
-        if board.is_capture(move) or board.gives_check(move):
-            captures_and_checks.append((move, mvv_lva_score(board, move)))
-
-    if not captures_and_checks:
+    # If we've reached the maximum quiescence depth, return the current evaluation
+    if depth >= max_depth:
         return stand_pat
 
-    captures_and_checks.sort(key=lambda x: x[1], reverse=True)
+    # Only consider captures to find a "quiet" position
+    captures = [move for move in board.legal_moves if board.is_capture(move)]
 
-    for move, _ in captures_and_checks:
+    # Order the moves based on MVV-LVA
+    captures.sort(key=lambda move: mvv_lva_score(board, move), reverse=True)
+
+    for move in captures:
         board.push(move)
-        score = -quiescence_search(board, -beta, -alpha, qdepth + 1, max_qdepth)
+        score = -quiescence_search(board, -beta, -alpha, depth + 1, max_depth)
         board.pop()
 
         if score >= beta:
@@ -824,41 +986,240 @@ def quiescence_search(board, alpha, beta, qdepth=0, max_qdepth=8):
     return alpha
 
 
-def minimax_alphabeta(board, depth=2, alpha=-float("inf"), beta=float("inf")):
+def minimax_alphabeta_with_tt(
+    board, depth=3, alpha=-float("inf"), beta=float("inf"), is_root=True
+):
     """
-    Minimax algorithm with alpha-beta pruning and quiescence search.
+    Minimax algorithm with alpha-beta pruning and transposition table.
     """
-    if depth == 0 or board.is_game_over():
+    # Check for game over conditions
+    if board.is_checkmate():
+        return None, -100000 if board.turn else 100000
+    if board.is_stalemate() or board.is_insufficient_material():
+        return None, 0
 
-        return None, quiescence_search(board, alpha, beta)
+    # Check if we've reached the maximum depth
+    if depth <= 0:
+        # Use quiescence search for a more stable evaluation
+        eval_score = quiescence_search(board, alpha, beta)
+        return None, eval_score
 
-    bestMove = None
+    # Calculate the Zobrist hash for the current position
+    hash_key = zobrist_hash(board)
+
+    # Check if the position is already in the transposition table
+    tt_entry = tt.lookup(hash_key)
+    if tt_entry and tt_entry.depth >= depth:
+        if tt_entry.flag == TranspositionEntry.EXACT:
+            if is_root and tt_entry.best_move:
+                return tt_entry.best_move, tt_entry.score
+            return None, tt_entry.score
+        elif tt_entry.flag == TranspositionEntry.LOWERBOUND:
+            alpha = max(alpha, tt_entry.score)
+        elif tt_entry.flag == TranspositionEntry.UPPERBOUND:
+            beta = min(beta, tt_entry.score)
+
+        if alpha >= beta:
+            return None, tt_entry.score
+
+    # Get the best move from the transposition table if available
+    best_tt_move = tt_entry.best_move if tt_entry else None
+
+    # Order moves - try the TT move first, then captures, checks, and other moves
+    ordered_moves = []
+    if best_tt_move:
+        ordered_moves.append(best_tt_move)
+
+    for move in order_moves(board):
+        if move != best_tt_move:  # Avoid duplicating the TT move
+            ordered_moves.append(move)
+
+    best_move = None
+    best_score = -float("inf") if board.turn == chess.WHITE else float("inf")
+
     if board.turn == chess.WHITE:
-        maxEval = -float("inf")
-        for move in order_moves(board):
+        for move in ordered_moves:
             board.push(move)
-            _, curEval = minimax_alphabeta(board, depth - 1, alpha, beta)
+            _, score = minimax_alphabeta_with_tt(board, depth - 1, alpha, beta, False)
             board.pop()
-            if curEval > maxEval:
-                maxEval = curEval
-                bestMove = move
-            alpha = max(alpha, curEval)
+
+            if score > best_score:
+                best_score = score
+                best_move = move
+
+            alpha = max(alpha, score)
             if beta <= alpha:
                 break
-        return bestMove, maxEval
+
+        # Store the result in the transposition table
+        if best_move:
+            flag = TranspositionEntry.EXACT
+            if best_score <= alpha:
+                flag = TranspositionEntry.UPPERBOUND
+            elif best_score >= beta:
+                flag = TranspositionEntry.LOWERBOUND
+
+            tt.store(hash_key, depth, best_score, flag, best_move)
+
+        return best_move, best_score
     else:
-        minEval = float("inf")
-        for move in order_moves(board):
+        for move in ordered_moves:
             board.push(move)
-            _, curEval = minimax_alphabeta(board, depth - 1, alpha, beta)
+            _, score = minimax_alphabeta_with_tt(board, depth - 1, alpha, beta, False)
             board.pop()
-            if curEval < minEval:
-                minEval = curEval
-                bestMove = move
-            beta = min(beta, curEval)
+
+            if score < best_score:
+                best_score = score
+                best_move = move
+
+            beta = min(beta, score)
             if beta <= alpha:
                 break
-        return bestMove, minEval
+
+        # Store the result in the transposition table
+        if best_move:
+            flag = TranspositionEntry.EXACT
+            if best_score <= alpha:
+                flag = TranspositionEntry.UPPERBOUND
+            elif best_score >= beta:
+                flag = TranspositionEntry.LOWERBOUND
+
+            tt.store(hash_key, depth, best_score, flag, best_move)
+
+        return best_move, best_score
+
+
+def neural_minimax_with_tt(
+    board, depth=3, alpha=-float("inf"), beta=float("inf"), top_n=4, is_root=True
+):
+    """
+    Minimax that uses neural network predictions for move pruning with transposition table.
+    """
+    # Check for game over conditions
+    if board.is_checkmate():
+        return None, -100000 if board.turn else 100000
+    if board.is_stalemate() or board.is_insufficient_material():
+        return None, 0
+
+    # Check if we've reached the maximum depth
+    if depth <= 0:
+        # Use quiescence search for a more stable evaluation
+        eval_score = quiescence_search(board, alpha, beta)
+        return None, eval_score
+
+    # Calculate the Zobrist hash for the current position
+    hash_key = zobrist_hash(board)
+
+    # Check if the position is already in the transposition table
+    tt_entry = tt.lookup(hash_key)
+    if tt_entry and tt_entry.depth >= depth:
+        if tt_entry.flag == TranspositionEntry.EXACT:
+            if is_root and tt_entry.best_move:
+                return tt_entry.best_move, tt_entry.score
+            return None, tt_entry.score
+        elif tt_entry.flag == TranspositionEntry.LOWERBOUND:
+            alpha = max(alpha, tt_entry.score)
+        elif tt_entry.flag == TranspositionEntry.UPPERBOUND:
+            beta = min(beta, tt_entry.score)
+
+        if alpha >= beta:
+            return None, tt_entry.score
+
+    # Get top moves from neural network
+    top_moves = get_top_n_moves(board, n=top_n)
+
+    if not top_moves:
+        legal_moves = list(board.legal_moves)
+        if not legal_moves:
+            return None, evaluate_board(board)
+        move_list = [(move.uci(), 0.0) for move in legal_moves]
+    else:
+        move_list = top_moves
+
+    # Get the best move from the transposition table if available
+    best_tt_move = tt_entry.best_move if tt_entry else None
+
+    # If TT move exists and is not in our move list, add it
+    if best_tt_move:
+        best_tt_move_uci = best_tt_move.uci()
+        if best_tt_move_uci not in [m[0] for m in move_list]:
+            move_list.insert(
+                0, (best_tt_move_uci, 1.0)
+            )  # Add at the beginning with high priority
+
+    best_move = None
+    best_score = -float("inf") if board.turn == chess.WHITE else float("inf")
+
+    if board.turn == chess.WHITE:
+        for move_uci, _ in move_list:
+            try:
+                move = chess.Move.from_uci(move_uci)
+                board.push(move)
+                _, score = neural_minimax_with_tt(
+                    board, depth - 1, alpha, beta, top_n, False
+                )
+                board.pop()
+
+                if score > best_score:
+                    best_score = score
+                    best_move = move
+
+                alpha = max(alpha, score)
+                if beta <= alpha:
+                    break
+            except Exception as e:
+                logger.error(
+                    f"Error in neural_minimax_with_tt for move {move_uci}: {e}"
+                )
+                if board.move_stack:
+                    board.pop()
+
+        # Store the result in the transposition table
+        if best_move:
+            flag = TranspositionEntry.EXACT
+            if best_score <= alpha:
+                flag = TranspositionEntry.UPPERBOUND
+            elif best_score >= beta:
+                flag = TranspositionEntry.LOWERBOUND
+
+            tt.store(hash_key, depth, best_score, flag, best_move)
+
+        return best_move, best_score
+    else:
+        for move_uci, _ in move_list:
+            try:
+                move = chess.Move.from_uci(move_uci)
+                board.push(move)
+                _, score = neural_minimax_with_tt(
+                    board, depth - 1, alpha, beta, top_n, False
+                )
+                board.pop()
+
+                if score < best_score:
+                    best_score = score
+                    best_move = move
+
+                beta = min(beta, score)
+                if beta <= alpha:
+                    break
+            except Exception as e:
+                logger.error(
+                    f"Error in neural_minimax_with_tt for move {move_uci}: {e}"
+                )
+                if board.move_stack:
+                    board.pop()
+
+        # Store the result in the transposition table
+        if best_move:
+            flag = TranspositionEntry.EXACT
+            if best_score <= alpha:
+                flag = TranspositionEntry.UPPERBOUND
+            elif best_score >= beta:
+                flag = TranspositionEntry.LOWERBOUND
+
+            tt.store(hash_key, depth, best_score, flag, best_move)
+
+        return best_move, best_score
 
 
 def get_top_n_moves(board: chess.Board, n=4):
@@ -867,8 +1228,12 @@ def get_top_n_moves(board: chess.Board, n=4):
     Returns a list of (move_uci, probability) tuples.
     """
     try:
+        is_white = board.turn == chess.WHITE
+        model = white_model if is_white else black_model
+        int_to_move = int_to_move_white if is_white else int_to_move_black
+
         if model is None:
-            logger.error("Model not initialized")
+            logger.error(f"{'White' if is_white else 'Black'} model not initialized")
             return []
 
         X_tensor = prepare_input(board).to(
@@ -916,71 +1281,12 @@ def get_top_n_moves(board: chess.Board, n=4):
         return []
 
 
-def neural_minimax(board, depth=3, alpha=-float("inf"), beta=float("inf"), top_n=4):
+def minimax_top_moves_with_tt(
+    board, top_moves, depth=3, use_neural_minimax=True, top_n=4
+):
     """
-    Minimax that uses neural network predictions with quiescence search.
-    """
-    if depth == 0 or board.is_game_over():
-
-        return None, quiescence_search(board, alpha, beta)
-
-    top_moves = get_top_n_moves(board, n=top_n)
-
-    if not top_moves:
-        legal_moves = list(board.legal_moves)
-        if not legal_moves:
-            return None, evaluate_board(board)
-        move_list = [(move.uci(), 0.0) for move in legal_moves]
-    else:
-        move_list = top_moves
-
-    bestMove = None
-    if board.turn == chess.WHITE:
-        maxEval = -float("inf")
-        for move_uci, _ in move_list:
-            try:
-                move = chess.Move.from_uci(move_uci)
-                board.push(move)
-                _, curEval = neural_minimax(board, depth - 1, alpha, beta, top_n)
-                board.pop()
-                if curEval > maxEval:
-                    maxEval = curEval
-                    bestMove = move
-                alpha = max(alpha, curEval)
-                if beta <= alpha:
-                    break
-            except Exception as e:
-                logger.error(f"Error in neural_minimax for move {move_uci}: {e}")
-                if board.move_stack:
-                    board.pop()
-        return bestMove, maxEval
-    else:
-        minEval = float("inf")
-        for move_uci, _ in move_list:
-            try:
-                move = chess.Move.from_uci(move_uci)
-                board.push(move)
-                _, curEval = neural_minimax(board, depth - 1, alpha, beta, top_n)
-                board.pop()
-                if curEval < minEval:
-                    minEval = curEval
-                    bestMove = move
-                beta = min(beta, curEval)
-                if beta <= alpha:
-                    break
-            except Exception as e:
-                logger.error(f"Error in neural_minimax for move {move_uci}: {e}")
-                if board.move_stack:
-                    board.pop()
-        return bestMove, minEval
-
-
-def minimax_top_moves(board, top_moves, depth=2, use_neural_minimax=False, top_n=4):
-    """
-    Run minimax on each of the top N moves and select the best one.
+    Run minimax on each of the top N moves and select the best one, using transposition table.
     Returns the best move (in UCI format) and its evaluation.
-
-    If use_neural_minimax is True, uses neural network to prune the search at every level.
     """
     try:
         if not top_moves:
@@ -990,13 +1296,16 @@ def minimax_top_moves(board, top_moves, depth=2, use_neural_minimax=False, top_n
         best_move = None
         best_eval = float("-inf") if board.turn == chess.WHITE else float("inf")
 
+        # Clear transposition table before starting a new search
+        tt.clear()
+
         for move_uci, _ in top_moves:
             try:
                 move = chess.Move.from_uci(move_uci)
                 board.push(move)
 
                 if use_neural_minimax:
-                    _, eval_score = neural_minimax(
+                    _, eval_score = neural_minimax_with_tt(
                         board,
                         depth=depth - 1,
                         alpha=-float("inf"),
@@ -1004,7 +1313,7 @@ def minimax_top_moves(board, top_moves, depth=2, use_neural_minimax=False, top_n
                         top_n=top_n,
                     )
                 else:
-                    _, eval_score = minimax_alphabeta(
+                    _, eval_score = minimax_alphabeta_with_tt(
                         board, depth=depth - 1, alpha=-float("inf"), beta=float("inf")
                     )
 
@@ -1021,10 +1330,13 @@ def minimax_top_moves(board, top_moves, depth=2, use_neural_minimax=False, top_n
                 if board.move_stack:
                     board.pop()
 
+        # Log transposition table statistics
+        logger.info(f"Transposition table stats: {tt.info()}")
+
         return best_move, best_eval
 
     except Exception as e:
-        logger.error(f"Error in minimax_top_moves: {e}")
+        logger.error(f"Error in minimax_top_moves_with_tt: {e}")
         return None, None
 
 
@@ -1034,32 +1346,18 @@ def predict_move_fen(
     top_n=5,
     use_neural_minimax=True,
     first_move_all_legal=False,
-    max_qdepth=6,
 ):
     """
-    Predict the best move for a given FEN string using the hybrid approach with quiescence search.
-
-    Parameters:
-    - depth: Regular search depth (default 8)
-    - top_n: Number of moves to consider from neural network (default 5)
-    - use_neural_minimax: When True, the neural network guides the search at every level
-    - first_move_all_legal: When True, consider ALL legal moves at the first level
-    - max_qdepth: Maximum depth for quiescence search (default 6)
+    Predict the best move for a given FEN string using the hybrid approach with transposition tables.
     """
     try:
-
-        global QUIESCENCE_MAX_DEPTH
-        QUIESCENCE_MAX_DEPTH = max_qdepth
-
         board = chess.Board(fen)
 
         if first_move_all_legal:
-
             legal_moves = list(board.legal_moves)
             top_moves = [(move.uci(), 0.0) for move in legal_moves]
             logger.info(f"Using all {len(top_moves)} legal moves for first ply")
         else:
-
             top_moves = get_top_n_moves(board, n=top_n)
 
         if not top_moves:
@@ -1067,7 +1365,10 @@ def predict_move_fen(
             move, eval_score = predict_move(board)
             return move, eval_score
 
-        best_move, eval_score = minimax_top_moves(
+        # Clear the transposition table before starting a new prediction
+        tt.clear()
+
+        best_move, eval_score = minimax_top_moves_with_tt(
             board,
             top_moves,
             depth=depth,
@@ -1081,6 +1382,9 @@ def predict_move_fen(
             )
             move, eval_score = predict_move(board)
             return move, eval_score
+
+        # Log transposition table statistics
+        logger.info(f"Final transposition table stats: {tt.info()}")
 
         return best_move, eval_score
 
