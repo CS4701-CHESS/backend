@@ -1331,7 +1331,7 @@ def minimax_top_moves_with_tt(
                     board.pop()
 
         # Log transposition table statistics
-        logger.info(f"Transposition table stats: {tt.info()}")
+        # logger.info(f"Transposition table stats: {tt.info()}")
 
         return best_move, best_eval
 
@@ -1384,7 +1384,7 @@ def predict_move_fen(
             return move, eval_score
 
         # Log transposition table statistics
-        logger.info(f"Final transposition table stats: {tt.info()}")
+        # logger.info(f"Final transposition table stats: {tt.info()}")
 
         return best_move, eval_score
 

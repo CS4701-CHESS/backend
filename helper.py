@@ -6,10 +6,10 @@ import numpy as np
 
 # load stockfish model
 stockfish = Stockfish(
-    path=os.path.abspath("stockfish/stockfish-macos-x86-64-bmi2")
-    # path=os.path.abspath(
-    #     "stockfish-windows-x86-64-avx2/stockfish/stockfish-windows-x86-64-avx2.exe"
-    # )
+    # path=os.path.abspath("stockfish/stockfish-macos-x86-64-bmi2")
+    path=os.path.abspath(
+        "stockfish-windows-x86-64-avx2/stockfish/stockfish-windows-x86-64-avx2.exe"
+    )
 )
 
 # uppercase is white, lowercase is black
@@ -40,6 +40,8 @@ def fen2vec(fen, isWhite=None):  # isWhite parameter is now optional
     strs = fen.split(" ")
     rows = strs[0].split("/")
     side = True if strs[1] == "w" else False
+    # if isWhite != side:
+    #     return None
 
     # Removed the condition that returned None when side != isWhite
     # This allows the function to work for both sides
